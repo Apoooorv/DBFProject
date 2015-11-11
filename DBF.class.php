@@ -72,8 +72,29 @@ class DBF {
 	  * @param array $date an array matching the return structure of <code>getdate()</code>
 	  * 	or null to use the current timestamp
 	  */
-	public static function write($filename, array $schema, array $records, $date=null) {
-		file_put_contents($filename, self::getBinary($schema, $records, $date));
+	public static function write($filename, array $schema, array $records, $memofile=null, $memoheaders=null, $date=null) {
+		if($memofile==null)
+			file_put_contents($filename, self::getBinary($schema, $records, $date));
+		else{
+			self::writeMemoHeaders($memofile, $memoheaders);
+			file_put_contents($filename, self::getBinary($schema, $records, $date));
+		}
+	}
+	
+// 	Writes the headers in to memo file.
+	private function writeMemoHeaders($memofile, $memoheaders){
+		$blocksize = 128;
+		$headerstring = '';
+
+		for($i=0;$i<512;$i++){
+			$insertvalue = pack('C', 0x00);
+			if($i == 7)
+				$insertvalue = pack('C', $blocksize);
+			if($i == 3)
+				$insertvalue = pack('C', 0x12);
+			$headerstring.= $insertvalue;
+		}
+		file_put_contents($memofile, $headerstring);		
 	}
 	
 	/** Gets the DBF file as a binary string
@@ -138,7 +159,6 @@ class DBF {
 				$js = $milleseconds;
 			}
 		}
-		
 		return (pack('V', $jd)) . (pack('V', $js));
 	}
 	
@@ -282,23 +302,50 @@ class DBF {
 		case 'T':
 			return self::timeStamp($data);
 			break;
+		case 'M6':
+			return self::memodata($data, $fieldInfo);
+			break;
 		default:
 			return "";
 		}
 	}
 	
+	//insert data in memo field
+	private static function memodata($data, $fieldInfo){
+		$out = '';
+		//Creation of block signature
+		$out.= pack('C', 0).pack('C',0).pack('C',0).pack('C',0x01);
+		
+		//Length of memo
+		$length = strval(dechex(strlen($data)));
+		for($i=strlen($length);$i<8;$i++)
+			$length = '0'.$length;
+		$out.= pack('C', intval($length[0].$length[1])).pack('C', intval($length[2].$length[3])).pack('C', intval($length[4].$length[5])).pack('C', intval($length[6].$length[7]));
+		
+		//appending data to output
+		$out.=$data;
+		
+		//writing into file
+		
+		$handle = fopen('Sample.fpt', 'a');
+		fwrite($handle, $out);
+		fclose($handle);
+		return ''; 
+	}
 	//assembles a single record 
 	private static function makeRecord($schema, $record) {
 		$out = " ";
-		
 		//foreach($record as $column => $data) {
-		foreach($schema as $column => $declaration) {
-			//$out .= self::makeField($data, $schema[$column]);
-			$out .= self::makeField(
-				$record[$column],
-				$declaration
-			);
+		foreach($schema as $singlerow){
+			$out.=self::makeField($record[$singlerow['name']], $singlerow);	
 		}
+// 		foreach($schema as $column => $declaration) {
+// 			//$out .= self::makeField($data, $schema[$column]);
+// 			$out .= self::makeField(
+// 				$record[$column],
+// 				$declaration
+// 			);
+// 		}
 		
 		return $out;
 	}
@@ -306,11 +353,9 @@ class DBF {
 	//assembles all the records 
 	private static function makeRecords($schema, $records) {
 		$out = "";
-		
 		foreach ($records as $record) {
 			$out .= self::makeRecord($schema, $record);
 		}
-		
 		return $out . "\x1a"; //FIXME: I have no idea why the end of the file is marked with 0x1a
 	}
 	
@@ -355,7 +400,7 @@ class DBF {
 	//makes partial file header
 	private static function makeHeader($date, $schema, $records) {
 		//0+1
-		$out = (pack('C', 0x30)); // version 001; dbase 5
+		$out = (pack('C', 0x31)); // version 001; dbase 5
 		//1+2
 		$out .= (pack('C3', $date['year'] - 1900, $date['mon'], $date['mday']));
 		//4+4
@@ -383,4 +428,4 @@ class DBF {
 	}
 	
 }
-
+?>

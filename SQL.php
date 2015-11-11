@@ -68,22 +68,30 @@ class SQL{
 			$resultSet = $this->executeQuery($sqlQuery);
 			
 			$fieldsMetaData = $resultSet->fetch_fields();
+			$responseArray["Memo"] = false;
 			//This will be used for creating the header for the table in the DBF
 			foreach ($fieldsMetaData as $field) {
 				$fieldName = $field->name;
 				$fieldType = $field->type;
 				$length = $field->length;
-				$headerArray["name"] = $fieldName;
-				$headerArray["type"] = $this->mysql_dbf_datatype_mapping[$fieldType];
-				$headerArray["size"] = $length;
-				$headerArray["NOCPTRANS"] = true;
-				$responseArray["Header"][]= $headerArray;
+				if($fieldType == 252){
+					$responseArray["Memo"] = array(
+						'name' => $field->name,
+						'type' => $field->type,
+						'size' => $field->max_length
+					);
+				}
+					$headerArray["name"] = $fieldName;
+					$headerArray["type"] = $this->mysql_dbf_datatype_mapping[$fieldType];
+					$headerArray["size"] = $length;
+					$headerArray["NOCPTRANS"] = true;
+					$responseArray["Header"][]= $headerArray;
 			}
 			WriteLog::writeDebugLog("Created header array");
 			WriteLog::writeInfoLog("Column count " . count($responseArray["Header"]));
 			
 			while($row = $resultSet->fetch_assoc()){
-				$responseArray["Data"][] = array_values($row);
+				$responseArray["Data"][] = $row;
 			}
 			WriteLog::writeDebugLog("Created data array");
 			WriteLog::writeInfoLog("Total records received " . count($responseArray["Data"]));

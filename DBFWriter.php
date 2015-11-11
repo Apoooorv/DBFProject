@@ -6,12 +6,15 @@ require "SQL.php";
 class DBFWriter extends DBF{
 	var $schema = array();
 	var $result = array();
-	var $filename = 'testfile.dbf';
+	var $filename = '';
 	var $sqlQuery = '';
+	var $memofilename = '';
+	var $memodata = false;
 	
-	function DBFWriter ($filename, $sqlQuery){
+	function DBFWriter ($filename, $memoname, $sqlQuery){
 		$this->filename = $filename;
 		$this->sqlQuery = $sqlQuery;
+		$this->memofilename = $memoname;
 	}
 	
 	/*var $schema = array(
@@ -42,6 +45,10 @@ class DBFWriter extends DBF{
 		$resultSet =  $objSQL->getQueryResults($this->sqlQuery);
 		$this->schema = $resultSet["Header"];
 		$this->result = $resultSet["Data"];
+		
+		if($resultSet["Memo"]){
+			$this->memodata = $resultSet["Memo"];
+		}
 		/*$newconnection = new server();
 		$newconnection->makeConnection();
 		$result = $newconnection->fireQuery();
@@ -57,7 +64,13 @@ class DBFWriter extends DBF{
 		try{
 			$this->getData();
 			WriteLog::writeDebugLog("Start writing the DBF file at location " . $this->filename);
-			$this->write($this->filename, $this->schema, $this->result);
+			if($this->memodata){
+				$this->write($this->filename, $this->schema, $this->result, $this->memofilename, $this->memodata);
+			}
+			else{
+				$this->write($this->filename, $this->schema, $this->result);
+			}
+			
 			WriteLog::writeDebugLog("Completed writing the DBF file at location " . $this->filename);
 		}catch(Exception $exp){
 			WriteLog::writeErrorLog("Error when writing the DBF file " . $exp->getTraceAsString ());
