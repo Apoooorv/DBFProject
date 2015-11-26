@@ -3,6 +3,9 @@
 require "DBF.class.php";
 require "SQL.php";
 
+/**
+ * This class is used for executing the given SQL query and then give a call to the class which will write the DBF file.
+ */
 class DBFWriter extends DBF{
 	var $schema = array();
 	var $result = array();
@@ -11,35 +14,19 @@ class DBFWriter extends DBF{
 	var $memofilename = '';
 	var $memodata = false;
 	
-	function DBFWriter ($filename, $memoname, $sqlQuery){
+	/*function DBFWriter ($filename, $memoname, $sqlQuery){
 		$this->filename = $filename;
 		$this->sqlQuery = $sqlQuery;
 		$this->memofilename = $memoname;
+	}*/
+	
+	function DBFWriter ($filename, $sqlQuery){
+		$this->filename = $filename;
+		$this->sqlQuery = $sqlQuery;
 	}
-	
-	/*var $schema = array(
-			array(
-					'name' => 'id',
-					'type' => 'N',
-					'size' => 20,
-					'declength' => 2,
-					'NOCPTRANS' => TRUE
-			),
-			array(
-					'name' => 'username',
-					'type' => 'C',
-					'size' => 20, 
-					'NOCPTRANS' => TRUE	
-			), 
-			array(
-					'name' => 'first_name', 
-					'type' => 'C', 
-					'size' => 20, 
-					'NOCPTRANS' => TRUE		
-			)	
-	);
-	var $result = array();*/
-	
+	/**
+	 * Execute the query and fetch data in required format to be written to DBF file.
+	 */
 	function getData(){
 		$objSQL = new SQL();
 		$resultSet =  $objSQL->getQueryResults($this->sqlQuery);
@@ -49,23 +36,16 @@ class DBFWriter extends DBF{
 		if($resultSet["Memo"]){
 			$this->memodata = $resultSet["Memo"];
 		}
-		/*$newconnection = new server();
-		$newconnection->makeConnection();
-		$result = $newconnection->fireQuery();
-		$newconnection->closeConnection();
-		$arrayindex = 0;
-		while($row = $result->fetch_assoc()){
-			$this->result[$arrayindex] = array($row['id'], $row['username'], $row['first_name']);
-			$arrayindex+=1;
-		}*/
 	}
-	
+	/**
+	 * The method which will be called from  outside for creating the DBF and FPT (if required) files.
+	 */
 	function writedata(){
 		try{
 			$this->getData();
 			WriteLog::writeDebugLog("Start writing the DBF file at location " . $this->filename);
 			if($this->memodata){
-				$this->write($this->filename, $this->schema, $this->result, $this->memofilename, $this->memodata);
+				$this->write($this->filename, $this->schema, $this->result, $this->memodata, $this->memodata);
 			}
 			else{
 				$this->write($this->filename, $this->schema, $this->result);

@@ -1,54 +1,17 @@
 <?php
-/**	Utility class to write complete DBF files. This is not a database interaction
-  * layer, it treats the database file as an all-at-once output.
-  * <pre>
-  * Schemas:
-  * 	schemas are supplied to this library as php arrays as follows:
-  * 	array(
-  * 		'name' => 'COLUMN B'
-  * 		'type' => 'C',
-  * 		'size' => 4,
-  * 		'declength' => 2,
-  * 		'NOCPTRANS' => true,
-  * 	);
-  * 
-  * 	'name': column name, 10 characters max, padded with null bytes if less than 10, truncated if more than 10
-  * 	'type' : a single character representing the DBF field type, the following are supported:
-  * 		'C': character data stored as 8 bit ascii
-  * 		'N': numeric character data stored as 8 bit ascii, when 'declength' is 
-  * 			present, declength + 1 bytes are consumed to store the decimal values
-  * 		'D': 8 character date specification (YYYYMMDD)
-  * 			always 8 bytes
-  * 		'L': single character boolean, 'T' or 'F' or a space ' ' for unintialized
-  * 			always 1 byte
-  * 		'T': 8 byte binary packed date stamp and milliseconds stamp
-  * 			first four bytes: integer representing days since Jan 1 4713 (julian calendar)
-  * 			second four bytes: integer milliseconds ellapsed since prior midnight
-  * 			always 8 bytes
-  * 
-  * 	'size': number of bytes this field occupies
-  * 	'declength': only applicable to type 'N', indicates how many of the alloted spaces are for
-  * 		decimal places and the decimal point
-  * 	'NOCPTRANS': Specifies the fields that should not be translated to another code page.
-  * 
-  * Records:
-  * 	records are supplied as arrays keyed by column name with values conforming to these type specs:
-  * 		'C': character data, will be truncated at field size, padded with spaces on the right to field size
-  * 		'N': numeric character data, will be truncated at field size,
-  * 			padded with spaces on the left to field size converts numeric 
-  * 			native types to numeric character data automatically
-  * 		'D': accepts a unix timestamp, a structure resembling 
-  * 			<code>getdate()</code>'s return format, or a 8 length string
-  * 			containing YYYYMMDD
-  * 		'L': accepts and converts ('T' and true) to 'T', ('F' and false) to
-  * 			'F' and everything else to ' '
-  * 		'T': accepts a unix timestamp, a structure resembling 
-  * 			<code>getdate()</code>'s return format or an array containing
-  * 			'jd' => (julian date representation)
-  * 			'js' => milleseconds elapsed since prior midnight
-  * </pre>
-  */
+/**
+ * This class is used for writing a DBF file. If the record set getting retun contains a MEMO field 
+ * then an FPT file is also created with same name as that of the DBF file but with extension FPT.
+ * Currently this class supports writing a FPT file containing one Test type MEMO field.
+ * Detailed Comments willl come soon......
+ */
 class DBF {
+	private static $isFirstMemo = true;//Dont change this else MEMO file will not be linked to DBF file correctly.	
+	private static $blockSize = 64;//Can change this. Optimum and default value is 64.
+	private static $DBFFileName = "";//These are variables used within the class
+	private static $FPTFileName = "";//These are variables used within the class
+	private static $memoDataFileLength = 512;
+	private static $lastBlockNo = 8;
 	// utility function to ouput a string of binary digits for inspection
 	private static function binout($bin) {
 		echo "data:", $bin, "<br />";
@@ -69,39 +32,47 @@ class DBF {
 	  * 	field in the DBF file (see <code>class DBF</code documentation)
 	  * @param array $records an array of fields given in the same order as the 
 	  * 	field specifications given in the schema
+	  * @param $ismemodata A boolean to check if the query executed contains memo field in it.
+	  * @param $memoheaders A collection of the details for writing the memo FPT file. Required if $ismemodata is true
 	  * @param array $date an array matching the return structure of <code>getdate()</code>
-	  * 	or null to use the current timestamp
+	  * 	or null to use the current timestamp. This is optional.
 	  */
-	public static function write($filename, array $schema, array $records, $memofile=null, $memoheaders=null, $date=null) {
-		if($memofile==null)
-			file_put_contents($filename, self::getBinary($schema, $records, $date));
+	public static function write($filename, array $schema, array $records, $ismemodata=null, $memoheaders=null, $date=null) {
+		self::$DBFFileName = $filename;
+		if(!$ismemodata){
+			file_put_contents(self::$DBFFileName, self::getBinary($schema, $records, $date,$ismemodata));
+		}
 		else{
-			self::writeMemoHeaders($memofile, $memoheaders);
-			file_put_contents($filename, self::getBinary($schema, $records, $date));
+			$DBFPathInfo = pathinfo($filename);
+			self::$FPTFileName = $DBFPathInfo['dirname'] . '/' . str_ireplace('.dbf','',$DBFPathInfo['basename']) . '.fpt';
+			self::writeMemoHeaders($memoheaders);
+			file_put_contents(self::$DBFFileName, self::getBinary($schema, $records, $date,$ismemodata));
 		}
 	}
 	
 // 	Writes the headers in to memo file.
-	private function writeMemoHeaders($memofile, $memoheaders){
-		$blocksize = 128;
+	/**
+	 * This function will be used for wrinting the Header section for the FPT file created if the result set contains 
+	 * a memo field.
+	 */
+	private function writeMemoHeaders($memoheaders){
 		$headerstring = '';
-
 		for($i=0;$i<512;$i++){
-			$insertvalue = pack('C', 0x00);
+			$insertvalue = pack('C', '0x00');
 			if($i == 7)
-				$insertvalue = pack('C', $blocksize);
+				$insertvalue = pack('C', self::$blockSize);
 			if($i == 3)
-				$insertvalue = pack('C', 0x12);
+				$insertvalue = pack('C', 0x17);
 			$headerstring.= $insertvalue;
 		}
-		file_put_contents($memofile, $headerstring);		
+		file_put_contents(self::$FPTFileName, $headerstring);		
 	}
 	
 	/** Gets the DBF file as a binary string
 	  * @see DBF::write()
 	  * @return string a binary string containing the DBF file.
 	  */
-	public static function getBinary(array $schema, array $records, $pDate) {
+	public static function getBinary(array $schema, array $records, $pDate,$ismemofile) {
 		if (is_numeric($pDate)) {
 			$date = getDate($pDate);
 		} elseif ($pDate == null) {
@@ -109,7 +80,7 @@ class DBF {
 		} else {
 			$date = $pDate;
 		}
-		return self::makeHeader($date, $schema, $records) . self::makeSchema($schema) . self::makeRecords($schema, $records);
+		return self::makeHeader($date, $schema, $records,$ismemofile) . self::makeSchema($schema) . self::makeRecords($schema, $records);
 	}
 	
 	/** Convert a unix timestamp, or the return structure of the <code>getdate()</code>
@@ -170,7 +141,6 @@ class DBF {
 		if (empty($timestamp)) {
 			$timestamp = 0;
 		}
-		
 		if (!is_numeric($timestamp) && !is_array($timestamp)) {
 			throw new InvalidArgumentException('$timestamp was not in expected format(s).');
 		}
@@ -223,11 +193,34 @@ class DBF {
 	//calculates the size of a single record
 	private static function getRecordSize($schema) {
 		$size = 1;//FIXME: I have no idea why this is 1 instead of 0
+		$datecount = 0;
+		$memocount = 0;
+		
+		$ismemo = false;
+		$isdate = false;
 		
 		foreach ($schema as $field) {
-			$size += $field['size'];
+			if($field['type']=='D'){//if contains a date field
+				$isdate = true;
+				$datecount++;
+			}
+			if($field['type']=='M6'){//if contains a Memo field
+				$ismemo = true;
+				$memocount++;
+			}
 		}
 		
+		foreach ($schema as $field) {
+			if($field['type']!='M6'){
+				if($field['type']=='D'){
+					$size += 8;
+				}else{
+					$size += $field['size'];
+				}
+			}else{
+				$size+=10;
+			}
+		}
 		return $size;
 	}
 	
@@ -258,8 +251,9 @@ class DBF {
 			if (strlen($tmp) == 8 && self::validate_date_string($tmp)) {
 				$data = $tmp;
 			}
+		}else{
+			$data = array("year"=>intval(substr($data, 0, 4)),"mon"=>intval(substr($data, 6, 2)),"mday"=>intval(substr($data, 8, 2)));
 		}
-		
 		return self::toDate($data);
 	}
 	
@@ -316,41 +310,56 @@ class DBF {
 		//Creation of block signature
 		$out.= pack('C', 0).pack('C',0).pack('C',0).pack('C',0x01);
 		
-		//Length of memo
-		$length = strval(dechex(strlen($data)));
+		/*Create the string of the length of the memo data with fixed string size of 8 chars.If the length is less than 
+	 	*	8 characters then provide a left padding of 0*/
+		$length = strlen($data);
 		for($i=strlen($length);$i<8;$i++)
 			$length = '0'.$length;
+			
+			
 		$out.= pack('C', intval($length[0].$length[1])).pack('C', intval($length[2].$length[3])).pack('C', intval($length[4].$length[5])).pack('C', intval($length[6].$length[7]));
 		
 		//appending data to output
 		$out.=$data;
 		
-		//writing into file
-		
-		$handle = fopen('Sample.fpt', 'a');
+		/*Every memo record should be in multiples of the block size. So provide right padding for the memo
+		 *  records which have lengts not in the multiple of block size*/
+		$lengthOfOut = strlen($out);
+		$fraction = ($lengthOfOut/self::$blockSize) - floor($lengthOfOut / self::$blockSize);
+		$requiredlength = $lengthOfOut + (self::$blockSize-($fraction*self::$blockSize));
+		$out = str_pad($out,$requiredlength,pack('C', 0),STR_PAD_RIGHT);
+		self::$memoDataFileLength += strlen($out); 
+		$handle = fopen(self::$FPTFileName, 'a');
 		fwrite($handle, $out);
 		fclose($handle);
-		return ''; 
+		//Clear the cached statics for fetching the current file size 
+		clearstatcache();
+		//First memo block starts from 8 = 512/blockSize
+		//$memoBlockNumber = 512/self::$blockSize;
+		//if(!self::$isFirstMemo){
+			//$memoBlockNumber = floor(filesize(self::$FPTFileName)/self::$blockSize);
+		//	$memoBlockNumber = self::$memoDataFileLength/self::$blockSize;
+		//}
+		$totakeblockno = self::$lastBlockNo;
+		self::$lastBlockNo = self::$lastBlockNo + (strlen($out)/self::$blockSize);
+		self::$isFirstMemo = false;
+		//self::$lastBlockNo =  $memoBlockNumber;
+		return str_pad($totakeblockno, 10, " ", STR_PAD_LEFT);
 	}
-	//assembles a single record 
+	/**
+	 * Create the string for a single record
+	 */
 	private static function makeRecord($schema, $record) {
 		$out = " ";
-		//foreach($record as $column => $data) {
 		foreach($schema as $singlerow){
 			$out.=self::makeField($record[$singlerow['name']], $singlerow);	
 		}
-// 		foreach($schema as $column => $declaration) {
-// 			//$out .= self::makeField($data, $schema[$column]);
-// 			$out .= self::makeField(
-// 				$record[$column],
-// 				$declaration
-// 			);
-// 		}
-		
 		return $out;
 	}
 	
-	//assembles all the records 
+	/**
+	 * Create a string for all the records.
+	 */ 
 	private static function makeRecords($schema, $records) {
 		$out = "";
 		foreach ($records as $record) {
@@ -359,8 +368,20 @@ class DBF {
 		return $out . "\x1a"; //FIXME: I have no idea why the end of the file is marked with 0x1a
 	}
 	
-	//assembles binary field definition
+	/**
+	 * Make a definition for a single field.
+	 */
 	private static function makeFieldDef($fieldDef, &$location) {
+	//DBF requires date in 8 bytes format, and we receive the date from MYSQL as 10 so adjust it to 8.
+	if($fieldDef["type"]=='D'){
+		$fieldDef["size"]=8;
+	}
+	//For memo types of records the type should by M and the size is 10 bytes containing the block size, so adjust it here.
+	if($fieldDef["type"]=='M6'){
+		$fieldDef["type"]='M';
+		$fieldDef["size"]=10;
+	}
+	//Creating the Field definition for the DBF header, field wise.
 		//0+11
 		$out = substr(str_pad($fieldDef['name'], 11, "\x00"), 0 , 11);
 		//11+1
@@ -372,16 +393,16 @@ class DBF {
 		//17+1
 		$out .= (pack('C', @$fieldDef['declength']));
 		//18+1
-		$out .= (pack('C', @$fieldDef['NOCPTRANS'] === true ? 4 : 0));
+		$out .= (pack('C', @$fieldDef['NOCPTRANS'] === true ? 0 : 0));
 		//19+13
 		$out .= (pack('x13'));
-		
-		
 		$location += $fieldDef['size'];
 		return $out;
 	}
 	
-	//assembles binary schema header 
+	/**
+	 * Create the schema to be added in the DBF header.
+	 */
 	private static function makeSchema($schema) {
 		$out = "";
 		$location = 1;//FIXME: explain why this is 1 instead of 0
@@ -392,17 +413,23 @@ class DBF {
 		
 		$out .= (pack('C', 13)); // marks the end of the schema portion of the file
 		
-		$out .= str_repeat(chr(0), 263); //FIXME: I gues filenames are sometimes stored here
+		//$out .= str_repeat(chr(0), 256); //FIXME: I gues filenames are sometimes stored here
 		
 		return $out;
 	}
 	
-	//makes partial file header
-	private static function makeHeader($date, $schema, $records) {
+	/**
+	 * Create the header for the DBF file.
+	 */
+	private static function makeHeader($date, $schema, $records,$ismemofile) {
 		//0+1
-		$out = (pack('C', 0x31)); // version 001; dbase 5
+		if($ismemofile == null){
+			$out = (pack('C', 0x02)); // version Foxpro 2.x;
+		}else{
+			$out = (pack('C', 0xF5)); // version Foxpro 2.x with memo;
+		}
 		//1+2
-		$out .= (pack('C3', $date['year'] - 1900, $date['mon'], $date['mday']));
+		$out .= (pack('C3', substr($date['year'],2,strlen($date['year'])), $date['mon'], $date['mday']));
 		//4+4
 		$out .= (pack('V', count($records)));//number of records
 		//8+2
@@ -412,7 +439,7 @@ class DBF {
 		//12+17
 		$out .= (pack('x17')); //reserved for zeros (unused)
 		//29+1
-		$out .= (pack('C', 3)); //FIXME: language? i have no idea
+		$out .= (pack('C', 0)); //FIXME: language? i have no idea
 		//30+2
 		$out .= (pack('x2')); //empty
 		return $out;
@@ -420,11 +447,7 @@ class DBF {
 	
 	//calculates the total size of the header, given the number of columns
 	private static function getTotalHeaderSize($schema) {
-		//file header is 32 bytes
-		//field definitions are 32 bytes each
-		//end of schema definition marker is 1 byte
-		//263 extra bytes for file name 
-		return (count($schema) * 32) + 32 + 1 + 263; 
+		return (count($schema) * 32) + 32 + 1 + 0; 
 	}
 	
 }

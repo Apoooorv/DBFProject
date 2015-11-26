@@ -1,8 +1,12 @@
-<?php 
-
+<?php
+/*
+	Created by SOFTCORNER
+*/
 require "config.php";
 require "WriteLog.php";
-
+/**
+ * This class is used for opening the connection then executing the query provided.
+ */
 class SQL{
 	var $connection;
 	/*
@@ -23,11 +27,10 @@ class SQL{
 		13=>'N',
 		16=>'L',
 		252=>'M6',
-		//252 is currently mapped to all text and blob types (MySQL 5.0.51a)
 		253=>'C',
 		254=>'C',
 		246=>'N'
-	);	
+	);
 	/*
 	 * This collection will map the MYSQL data type int value to the corresponding datatype name value
 	 * */
@@ -45,27 +48,29 @@ class SQL{
 		12=>'datetime',
 		13=>'year',
 		16=>'bit',
-		//252 is currently mapped to all text and blob types (MySQL 5.0.51a)
 		253=>'varchar',
 		254=>'char',
 		246=>'decimal'
-	);	
-	
+	);
+
 	/*
 	 * This function will be used for fetching the result set based on the given query.
-	 * This will return the collection containing the column headings and the data received 
-	 * by executing the query. 
+	 * This will return the collection containing the column headings and the data received
+	 * by executing the query.
 	 * */
 	function getQueryResults($sqlQuery){
-	WriteLog::writeDebugLog("Start execution of the query");	
+	WriteLog::writeDebugLog("Start execution of the query");
 	$resultSet = array();
 		$fieldsMetaData = array();
 		$responseArray = array("Header"=>array(),"Data"=>array());
 		try{
-			
+
 			$this->getConnection();
 			
+			
+			
 			$resultSet = $this->executeQuery($sqlQuery);
+
 			
 			$fieldsMetaData = $resultSet->fetch_fields();
 			$responseArray["Memo"] = false;
@@ -74,7 +79,7 @@ class SQL{
 				$fieldName = $field->name;
 				$fieldType = $field->type;
 				$length = $field->length;
-				if($fieldType == 252){
+				if($fieldType == 252){//For Text type MEMO
 					$responseArray["Memo"] = array(
 						'name' => $field->name,
 						'type' => $field->type,
