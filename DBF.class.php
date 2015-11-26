@@ -6,11 +6,9 @@
  * Detailed Comments willl come soon......
  */
 class DBF {
-	private static $isFirstMemo = true;//Dont change this else MEMO file will not be linked to DBF file correctly.	
 	private static $blockSize = 64;//Can change this. Optimum and default value is 64.
 	private static $DBFFileName = "";//These are variables used within the class
 	private static $FPTFileName = "";//These are variables used within the class
-	private static $memoDataFileLength = 512;
 	private static $lastBlockNo = 8;
 	// utility function to ouput a string of binary digits for inspection
 	private static function binout($bin) {
@@ -38,6 +36,7 @@ class DBF {
 	  * 	or null to use the current timestamp. This is optional.
 	  */
 	public static function write($filename, array $schema, array $records, $ismemodata=null, $memoheaders=null, $date=null) {
+		self::$lastBlockNo = 512/self::$blockSize;
 		self::$DBFFileName = $filename;
 		if(!$ismemodata){
 			file_put_contents(self::$DBFFileName, self::getBinary($schema, $records, $date,$ismemodata));
@@ -328,22 +327,13 @@ class DBF {
 		$fraction = ($lengthOfOut/self::$blockSize) - floor($lengthOfOut / self::$blockSize);
 		$requiredlength = $lengthOfOut + (self::$blockSize-($fraction*self::$blockSize));
 		$out = str_pad($out,$requiredlength,pack('C', 0),STR_PAD_RIGHT);
-		self::$memoDataFileLength += strlen($out); 
 		$handle = fopen(self::$FPTFileName, 'a');
 		fwrite($handle, $out);
 		fclose($handle);
 		//Clear the cached statics for fetching the current file size 
 		clearstatcache();
-		//First memo block starts from 8 = 512/blockSize
-		//$memoBlockNumber = 512/self::$blockSize;
-		//if(!self::$isFirstMemo){
-			//$memoBlockNumber = floor(filesize(self::$FPTFileName)/self::$blockSize);
-		//	$memoBlockNumber = self::$memoDataFileLength/self::$blockSize;
-		//}
 		$totakeblockno = self::$lastBlockNo;
 		self::$lastBlockNo = self::$lastBlockNo + (strlen($out)/self::$blockSize);
-		self::$isFirstMemo = false;
-		//self::$lastBlockNo =  $memoBlockNumber;
 		return str_pad($totakeblockno, 10, " ", STR_PAD_LEFT);
 	}
 	/**
